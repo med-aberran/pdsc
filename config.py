@@ -47,7 +47,6 @@ def _normalize_db_url(url):
     return url
 
 
-def _engine_options():
     """Options du moteur SQLAlchemy.
 
     Sur Vercel chaque invocation peut tourner dans une instance différente :
