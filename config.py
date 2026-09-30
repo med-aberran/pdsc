@@ -35,31 +35,18 @@ IS_VERCEL = bool(os.environ.get('VERCEL'))
 
 
 def _normalize_db_url(url):
-    """Adapte l'URL PostgreSQL de Supabase pour SQLAlchemy/psycopg2.
+    """Adapte l'URL PostgreSQL de Supabase pour SQLAlchemy + psycopg2.
 
-    - 'postgres://'  -> 'postgresql://'  (SQLAlchemy 1.4+ refuse 'postgres://')
+    - 'postgres://' ou 'postgresql://' -> 'postgresql+psycopg2://'
+      (SQLAlchemy 2.1+ utiliserait sinon le pilote 'psycopg' v3, non installé)
     - retourne None si la variable est vide.
     """
     if not url:
         return None
-    if url.startswith('postgres://'):
-        url = 'postgresql://' + url[len('postgres://'):]
+    for prefix in ('postgres://', 'postgresql://'):
+        if url.startswith(prefix):
+            return 'postgresql+psycopg2://' + url[len(prefix):]
     return url
-
-
-    """Options du moteur SQLAlchemy.
-
-    Sur Vercel chaque invocation peut tourner dans une instance différente :
-    on désactive le pool local (NullPool) et on laisse le pooler de Supabase
-    (Supavisor, port 6543) gérer les connexions. SSL est exigé par Supabase.
-    """
-    options = {
-        'pool_pre_ping': True,
-        'connect_args': {'sslmode': os.environ.get('DB_SSLMODE', 'require')},
-    }
-    if IS_VERCEL:
-        options['poolclass'] = NullPool
-    return options
 
 
 class Config:
@@ -92,7 +79,12 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     SQLALCHEMY_ENGINE_OPTIONS = (
-        _engine_options()
+        {
+            'pool_pre_ping': True,
+            'connect_args': {'sslmode': os.environ.get('DB_SSLMODE', 'require')},
+            # Sur Vercel : pas de pool local, c'est le pooler Supabase qui gère.
+            **({'poolclass': NullPool} if os.environ.get('VERCEL') else {}),
+        }
         if SQLALCHEMY_DATABASE_URI.startswith('postgresql')
         else {}
     )
